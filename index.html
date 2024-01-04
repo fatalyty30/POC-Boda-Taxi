@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BODA Taxi</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+    
+    <style>
+        .hidden {
+            display: none;
+        }
+        
+        label {
+            margin-bottom: 10px;
+            display: block;
+        }
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #E6E6FA;
+        } 
+        
+        .destination-icon span, .start-icon span {
+        font-size: 48px; 
+        color: black;
+        white-space: nowrap; 
+        }
+        #map {
+            width: 100%;
+            height: 0;
+            padding-top: 100%;
+            position: relative;
+        }
+        .leaflet-container {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+        .input-section {
+            width: 90%;
+            margin: 10px auto;
+            text-align: center;
+            font-size: 48px;
+        }
+        .address-input { 
+            padding: 8px;
+            font-size: 48px;
+            width: 75%;
+        }
+        button, .order-button {
+            padding: 10px;
+            font-size: 48px;
+            background-color: #FFD700;
+            border: none;
+            border-radius: 20px;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            margin: 4px 2px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+            transition-duration: 0.4s;
+        }
+
+        button:hover, .order-button:hover {
+            background-color: #FFC107;
+            box-shadow: 0 12px 16px 0 rgba(0,0,0,0.24);
+        }
+
+        button {
+        width: 20%;
+        margin-top: 50px;
+        font-size: 54px;
+        margin-left: auto;
+        margin-right: auto;
+        display: block; /* This ensures the button respects the margin auto for centering */
+    }
+
+
+        .order-button {
+            width: 50%;
+            padding: 8px;
+            font-size: 42px;
+            margin: 10px auto;
+            display: block;
+        }
+
+        #message-container {
+            text-align: center;
+            font-size: 48px;
+            margin-top: 30px;
+            width: 90%;
+            font-family: 'Arial';
+        }
+        
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <div id="message-container"></div>
+
+    <button id="login">Login</button>
+
+<script>
+
+// AUTH0 PLUGIN FROM AUTH0 DOCUMENTATION
+auth0.createAuth0Client({
+  domain: "dev-1oi4kzibc46toc5x.us.auth0.com", //DOMAIN NAME FOR THE APP ON AUTH0 ACCOUNT
+  clientId: "2HZdvTlRB6pHOMukdJWdE5pdJ2qaD2V9", //CLIENT ID FOR THE APP ON AUTH0 ACCOUNT
+  authorizationParams: {
+    redirect_uri: "https://bodataxi.com/app/" //REDIRECT URL CALLBACK
+  }
+}).then(async (auth0Client) => {
+  const loginButton = document.getElementById("login");
+
+  loginButton.addEventListener("click", (e) => {
+    e.preventDefault();
+    auth0Client.loginWithRedirect();
+  });
+
+  if (location.search.includes("state=") && 
+      (location.search.includes("code=") || 
+      location.search.includes("error="))) {
+    await auth0Client.handleRedirectCallback();
+    window.history.replaceState({}, document.title, "/");
+  }
+
+  // LOGOUT BUTTON NOT USED IN V1
+  const logoutButton = document.getElementById("logout");
+
+  logoutButton.addEventListener("click", (e) => {
+    e.preventDefault();
+    auth0Client.logout();
+  });
+
+  const isAuthenticated = await auth0Client.isAuthenticated();
+  const userProfile = await auth0Client.getUser();
+
+  // PROFILE ID NOT USED IN V1
+  const profileElement = document.getElementById("profile");
+
+  if (isAuthenticated) {
+    profileElement.style.display = "block";
+    profileElement.innerHTML = `
+            <p>${userProfile.name}</p>
+            <img src="${userProfile.picture}" />
+          `;
+  } else {
+    profileElement.style.display = "none";
+  }
+});
+
+//OMS MAP ON PARIS
+var map = L.map('map').setView([48.8566, 2.3522], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+var startMarker = null;
+var destinationMarker = null;
+
+//SET MARKER ON MAP & SET START ADDRESS AND DESTINATION ADDRESS
+destinationMarker = L.marker([coords.lat, coords.lon], { icon: destinationIcon }).addTo(map);
+        function setStartAddress() {
+            var startAddress = document.getElementById('start-address').value;
+            if (startMarker) {
+                map.removeLayer(startMarker);
+            }
+            getCoordinates(startAddress, function(coords) {
+                if(coords) {
+                    var startIcon = L.divIcon({
+                        className: 'start-icon',
+                        html: '<div style="background-color: blue; width: 20px; height: 20px;"></div><span>' + startAddress + '</span>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    });
+
+                    startMarker = L.marker([coords.lat, coords.lon], { icon: startIcon })
+                        .addTo(map)
+                        .openPopup();
+                }
+            });
+        }
+        function setDestinationAddress() {
+            var destinationAddress = document.getElementById('destination-address').value;
+            if (destinationMarker) {
+                map.removeLayer(destinationMarker);
+            }
+            getCoordinates(destinationAddress, function(coords) {
+                if(coords) {
+                    var destinationIcon = L.divIcon({
+                        className: 'destination-icon',
+                        html: '<div style="background-color: red; width: 20px; height: 20px;"></div><span>' + destinationAddress + '</span>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    });
+
+                    destinationMarker = L.marker([coords.lat, coords.lon], { icon: destinationIcon })
+                        .addTo(map)
+                        .openPopup();
+                }
+            });
+        }
+
+// GET COORDINATES BASED ON NOMINATIM TOOL
+function getCoordinates(address, callback) {
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${address}`)
+        .then(response => response.json())
+        .then(data => {
+            if(data.length > 0) {
+                callback(data[0]);
+            } else {
+                callback(null);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            callback(null);
+        });
+}
+
+// ORDER COURSE FUNCTION WITH HARDCODED MESSAGE CONTAINER
+function orderCourse() {
+    var startAddress = document.getElementById('start-address').value;
+    var destinationAddress = document.getElementById('destination-address').value;
+    var messageContainer = document.getElementById('message-container');
+
+    if (!startAddress || !destinationAddress) {
+        messageContainer.innerHTML = "Please enter both departure and destination addresses.";
+        messageContainer.style.color = 'red'; 
+        return; 
+    }
+
+    sendDataToGoogleSheet(startAddress, destinationAddress); //SEND DATA TO SHEET
+
+    messageContainer.style.color = 'black'; 
+    messageContainer.innerHTML = "Looking for a Rider...";
+
+    // HARDCODED COUNTDOWN
+    setTimeout(function() {
+        messageContainer.innerHTML = "Rider found! The Rider will arrive in ";
+        var timeLeft = 30; 
+        var timerId = setInterval(function() {
+            var seconds = timeLeft;
+            messageContainer.innerHTML = "Rider found! The Rider will arrive in " + seconds + " seconds";
+            if (timeLeft === 0) {
+                clearInterval(timerId);
+                messageContainer.innerHTML = "The Rider has arrived!";
+            } else {
+                timeLeft--;
+            }
+        }, 1000);
+    }, 5000);
+}
+
+// SEND DATA TO GOOGLE SHEET V1 
+function sendDataToGoogleSheet(startAddress, destinationAddress) {
+    var scriptUrl = 'https://script.google.com/macros/s/AKfycbzUPVmjiljmVRQKquAfcNZn5elYTk-qkvRKEcbrRYONoph30CxvBlQIOvRlVbqcdDpj/exec'//REPLACE WITH NEW SCRIPT URL
+    fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ startAddress: startAddress, destinationAddress: destinationAddress }),
+        headers: new Headers({
+            'Content-Type': 'application/json'
+        })
+    })
+    .then(response => response.text())
+    .then(text => console.log(text))
+    .catch(error => console.error('Error:', error));
+}
+
+// GEOLOCATION + ADD THE ADDRESS AS START ADDRESS INPUT IF POSSIBLE
+function getUserLocation() {
+    if (navigator.geolocation) {
+        var options = {
+            enableHighAccuracy: true, 
+            timeout: 10000, 
+            maximumAge: 0 
+        };
+        navigator.geolocation.getCurrentPosition(showPosition, handleError, options);
+    } else {
+        alert("Geolocation is not supported by this browser.");
+    }
+}
+
+function showPosition(position) {
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+
+    getAddressFromCoordinates(latitude, longitude);
+}
+
+function handleError(error) {
+    console.warn(`ERROR(${error.code}): ${error.message}`);
+    switch (error.code) {
+        case error.PERMISSION_DENIED:
+            break;
+        case error.POSITION_UNAVAILABLE:
+            break;
+        case error.TIMEOUT:
+            break;
+        case error.UNKNOWN_ERROR:
+            break;
+    }
+}
+function getAddressFromCoordinates(latitude, longitude) {
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
+            const address = data.display_name; 
+            document.getElementById('start-address').value = address; 
+        })
+        .catch(error => console.error('Error:', error));
+}
+</script>
+
+</body>
+</html>
